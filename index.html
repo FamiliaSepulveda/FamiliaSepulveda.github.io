@@ -117,6 +117,10 @@ body {
   margin-top: 12px;
 }
 .field { display: flex; flex-direction: column; gap: 5px; }
+.input-wrap {
+  position: relative;
+  min-width: 0;
+}
 label {
   font-size: 11px;
   font-weight: 500;
@@ -142,6 +146,53 @@ input[type="text"]:focus, input[type="date"]:focus {
   box-shadow: 0 0 0 3px rgba(17,17,16,0.07);
 }
 input::placeholder { color: #c0c0ba; }
+
+/* Información: evita 3 columnas apretadas (móvil horizontal, tablets) */
+@media (max-width: 900px) {
+  .fields-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 12px;
+    align-items: start;
+  }
+  .fields-row > .field:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── MÓVIL: información (De / Para / Fecha) ── */
+@media (max-width: 640px) {
+  body { padding: 28px 14px 72px; }
+  .page-header { margin-bottom: 22px; }
+  .header-top { flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+  .page-title { font-size: 34px; letter-spacing: -0.5px; }
+  .page-badge { align-self: center; }
+  .card-header { padding: 12px 14px; }
+  .card-body { padding: 16px 14px; }
+  .card-body .input-wrap { width: 100%; }
+  /* iOS: 16px+ en campos clave evita zoom al enfocar */
+  #seller,
+  #buyer,
+  #date,
+  #rut-buyer {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .fields-row-2 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+/* Pantallas muy estrechas: una columna (De, Para y Fecha apilados) */
+@media (max-width: 520px) {
+  .fields-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .fields-row > .field:nth-child(3) {
+    grid-column: auto;
+  }
+}
 
 /* ── FACTURA TOGGLE ── */
 .factura-toggle-row {
@@ -190,7 +241,7 @@ input::placeholder { color: #c0c0ba; }
 
 /* ── TABLE ── */
 .table-wrap { overflow-x: auto; overflow-y: visible; }
-table { width: 100%; border-collapse: collapse; min-width: 480px; }
+table { width: 100%; border-collapse: collapse; min-width: 500px; }
 
 thead tr { border-bottom: 1px solid var(--border); }
 thead th {
@@ -218,10 +269,19 @@ tbody td:last-child { padding-right: 0; }
   font-family: 'DM Mono', monospace;
 }
 .col-product { min-width: 200px; }
-.col-qty { width: 80px; }
-.col-price { width: 110px; }
+.col-qty { width: 76px; }
+.col-price {
+  width: 124px;
+  min-width: 8ch;
+  max-width: 150px;
+}
+.col-price .td-input {
+  padding-left: 7px;
+  padding-right: 7px;
+  min-width: 7ch;
+}
 .col-total {
-  width: 110px; text-align: right;
+  width: 112px; text-align: right;
   font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
   color: var(--ink); padding-right: 4px;
 }
@@ -528,8 +588,8 @@ textarea::placeholder { color: #c0c0ba; }
   /* ── MODO "LISTA PARA RELLENAR" en impresión ── */
   .hide-price thead th.th-precio,
   .hide-price thead th.th-total { display:table-cell!important; color:#555!important; }
-  .hide-price .col-price { display:table-cell!important; width:110px; vertical-align:middle; padding:6px 8px!important; }
-  .hide-price .col-total { display:table-cell!important; width:110px; vertical-align:middle; padding:6px 8px!important; text-align:right; }
+  .hide-price .col-price { display:table-cell!important; width:124px; vertical-align:middle; padding:6px 8px!important; }
+  .hide-price .col-total { display:table-cell!important; width:112px; vertical-align:middle; padding:6px 8px!important; text-align:right; }
   /* Ambas celdas: ocultar contenido real y poner línea de altura fija */
   .hide-price .col-price .td-input,
   .hide-price .col-total {
@@ -581,14 +641,14 @@ textarea::placeholder { color: #c0c0ba; }
       <div class="fields-row">
         <div class="field">
           <label>De</label>
-          <div style="position:relative">
+          <div class="input-wrap">
             <input type="text" id="seller" placeholder="Tu nombre o empresa" oninput="acShowPara('de',this.value)" onfocus="acShowPara('de',this.value)" onblur="acHidePara('de')" autocomplete="off">
             <div class="ac-list" id="ac-de" style="position:fixed;display:none;min-width:200px;z-index:9999"></div>
           </div>
         </div>
         <div class="field">
           <label>Para</label>
-          <div style="position:relative" id="wrap-para">
+          <div class="input-wrap" id="wrap-para">
             <input type="text" id="buyer" placeholder="Nombre del cliente" oninput="acShowPara('para',this.value)" onfocus="acShowPara('para',this.value)" onblur="acHidePara('para')" autocomplete="off"><span id="buyer-rut-print" class="buyer-rut-print"></span>
             <div class="ac-list" id="ac-para" style="position:fixed;display:none;min-width:200px;z-index:9999"></div>
           </div>
@@ -603,7 +663,7 @@ textarea::placeholder { color: #c0c0ba; }
         <div style="margin-top:12px">
           <div class="field">
             <label>RUT del receptor (cliente)</label>
-            <div style="position:relative">
+            <div class="input-wrap">
               <input type="text" id="rut-buyer" placeholder="12.345.678-9"
                 oninput="formatRut(this);acShowPara('rut',this.value)"
                 onfocus="acShowPara('rut',this.value)"
@@ -749,7 +809,7 @@ textarea::placeholder { color: #c0c0ba; }
   <div class="actions">
     <button class="btn btn-ghost" onclick="showClearModal()">Limpiar</button>
     <div class="actions-spacer"></div>
-    <button class="btn btn-primary" onclick="window.print()">
+    <button class="btn btn-primary" onclick="printApunte()">
       <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       Imprimir / Guardar PDF
     </button>
@@ -1234,7 +1294,14 @@ function clearAll(){
   toast('Apunte limpiado');
 }
 
-// ── PDF ──
+// ── PRINT / PDF (iPhone: ventana blob evita pie con github.io del sistema) ──
+function printApunte(){
+  const ua=navigator.userAgent||'';
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(isIOS){ generatePDF(); return; }
+  window.print();
+}
+
 async function generatePDF(){
   document.querySelectorAll('input').forEach(el=>el.setAttribute('value',el.value));
   document.querySelectorAll('textarea').forEach(el=>el.textContent=el.value);
@@ -1255,6 +1322,7 @@ async function generatePDF(){
   tbody tr{border-bottom:1px solid #e8e8e8!important}
   tbody tr:hover{background:none!important}
   .td-input{border:none!important;background:transparent!important;color:#000!important;padding:1px 0!important;height:auto!important}
+  .col-price{min-width:8ch!important}
   .num-cell{background:transparent!important;color:#aaa!important;border-color:#ddd!important}
   .col-total{color:#000!important}
   .totals-box{border:1px solid #ccc!important;box-shadow:none!important}
@@ -1276,8 +1344,10 @@ async function generatePDF(){
   const blob=new Blob([printHtml],{type:'text/html;charset=utf-8'});
   const url=URL.createObjectURL(blob);
   const win=window.open(url,'_blank');
-  if(!win)toast('Permite ventanas emergentes para el PDF');
-  else toast('Abriendo PDF ✓');
+  if(!win){
+    toast('Activa ventanas emergentes para PDF sin URL, o se imprime esta página');
+    window.print();
+  }else toast('Abriendo para imprimir…');
   setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 
