@@ -228,16 +228,6 @@ input::placeholder { color: #c0c0ba; }
 /* Campos de factura extra */
 .factura-fields { display:none; }
 .factura-fields.show { display:block; }
-.factura-note {
-  font-size: 11px;
-  color: var(--muted);
-  font-style: italic;
-  padding: 8px 12px;
-  background: var(--muted-bg);
-  border-radius: 6px;
-  margin-top: 8px;
-  border-left: 2px solid var(--border-mid);
-}
 
 /* ── TABLE ── */
 .table-wrap { overflow-x: auto; overflow-y: visible; }
@@ -580,7 +570,6 @@ textarea::placeholder { color: #c0c0ba; }
   .app { max-width:100%!important; }
   .ac-list { display:none!important; }
   tr.saldo-row { background:#f5f5f3!important; }
-  .factura-note { display:none!important; }
   /* Ocultar filas sin producto en impresión */
   tr.row-empty { display:none!important; }
   #notes-card[data-empty="1"] { display:none!important; }
@@ -673,9 +662,6 @@ textarea::placeholder { color: #c0c0ba; }
             </div>
             <div class="rut-hint" id="rut-hint">⚠ RUT inválido — formato: 12.345.678-9</div>
           </div>
-        </div>
-        <div class="factura-note">
-          💡 Si el RUT no está disponible, se imprimirá como línea en blanco para completar a mano.
         </div>
       </div>
     </div>
@@ -1336,7 +1322,6 @@ async function generatePDF(){
   .app{max-width:100%!important}
   tr.saldo-row{background:#f5f5f3!important}
   .hide-price .col-price,.hide-price .col-total,.hide-price .bottom-area{display:none!important}
-  .factura-note{display:none!important}
   @page{margin:0;size:A4}
 </style>
 <script>window.addEventListener('load',function(){setTimeout(function(){window.print();},900);});<\/script>
