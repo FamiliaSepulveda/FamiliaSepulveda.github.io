@@ -742,10 +742,10 @@ textarea::placeholder { color: #c0c0ba; }
                 <span style="font-size:13px;color:var(--muted);padding-left:10px;font-style:italic;">Saldo anterior</span>
               </td>
               <td class="col-price">
-                <input class="td-input num-input" type="text" inputmode="numeric" id="saldo-val" value="0" data-raw="0" placeholder="0"
+                <input class="td-input num-input" type="text" inputmode="decimal" id="saldo-val" value="0" data-raw="0" placeholder="0"
                   onfocus="numFocus(this)"
-                  onblur="this.dataset.raw=parseFloat(this.value.replace(/[^\d.,]/g,'').replace(',','.'))||0;this.value=fmtNum(parseFloat(this.dataset.raw)||0);recalc()"
-                  oninput="this.dataset.raw=parseFloat(this.value.replace(/[^\d.,]/g,'').replace(',','.'))||0;recalc()"
+                  onblur="var r=parseNumInput(this.value);this.dataset.raw=r;this.value=fmtNum(r);recalc()"
+                  oninput="this.dataset.raw=parseNumInput(this.value);recalc()"
                   style="text-align:right;font-family:'DM Mono',monospace;font-size:13px;">
               </td>
               <td class="col-total" id="t-saldo-line">$0</td>
@@ -859,6 +859,27 @@ function fmtNum(n){
   return parts.join(',');
 }
 function fmt(n){ return '$'+fmtNum(n); }
+
+/** Cantidad/precio: acepta coma decimal (iOS/Latam) y miles con punto (ej. 1.234,5) */
+function parseNumInput(str){
+  let s=String(str||'').trim().replace(/[^\d.,]/g,'');
+  if(!s)return 0;
+  const lastC=s.lastIndexOf(',');
+  const lastD=s.lastIndexOf('.');
+  let n;
+  if(lastC>lastD){
+    const intRaw=s.slice(0,lastC).replace(/\./g,'');
+    const frac=s.slice(lastC+1).replace(/[^\d]/g,'');
+    n=parseFloat(frac?intRaw+'.'+frac:intRaw);
+  }else if(lastD>lastC){
+    const intRaw=s.slice(0,lastD).replace(/,/g,'');
+    const frac=s.slice(lastD+1).replace(/[^\d]/g,'');
+    n=parseFloat(frac?intRaw+'.'+frac:intRaw);
+  }else{
+    n=parseFloat(s.replace(/\./g,'').replace(/,/g,'.'))||parseFloat(s.replace(/,/g,''))||0;
+  }
+  return Number.isFinite(n)?n:0;
+}
 
 // ── STATE ──
 let productMemory=[];
@@ -1175,9 +1196,9 @@ function renderRows(){
           <div class="ac-list" id="ac-${row.id}"></div>
         </div>
       </td>
-      <td class="col-qty"><input class="td-input num-input" type="text" inputmode="numeric" value="${fmtNum(row.qty)}" data-raw="${row.qty}"
+      <td class="col-qty"><input class="td-input num-input" type="text" inputmode="decimal" value="${fmtNum(row.qty)}" data-raw="${row.qty}"
         onfocus="numFocus(this)" onblur="numBlur(this,${row.id},'qty')" oninput="numInput(this,${row.id},'qty')"></td>
-      <td class="col-price"><input class="td-input num-input" type="text" inputmode="numeric" value="${fmtNum(row.price)}" data-raw="${row.price}"
+      <td class="col-price"><input class="td-input num-input" type="text" inputmode="decimal" value="${fmtNum(row.price)}" data-raw="${row.price}"
         onfocus="numFocus(this)" onblur="numBlur(this,${row.id},'price')" oninput="numInput(this,${row.id},'price')"></td>
       <td class="col-total" id="line-${row.id}">${fmt(line)}</td>
       <td class="col-del"><button class="btn-del" onclick="deleteRow(${row.id})">
@@ -1191,14 +1212,25 @@ function renderRows(){
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 // ── NUMERIC INPUTS ──
-function numFocus(el){const raw=parseFloat(el.dataset.raw)||0;el.value=raw===0?'':String(raw);el.select();}
+function numFocus(el){
+  const raw=parseFloat(el.dataset.raw);
+  if(!Number.isFinite(raw)||raw===0){el.value='';el.select();return;}
+  el.value=fmtNum(raw);
+  el.select();
+}
 function numInput(el,id,field){
-  const raw=parseFloat(el.value.replace(/[^\d.,]/g,'').replace(',','.'))||0;
+  const raw=parseNumInput(el.value);
   el.dataset.raw=raw;
   if(field==='qty')upd(id,'qty',raw);else upd(id,'price',raw);
   refreshLine(id);recalc();
 }
-function numBlur(el,id,field){const raw=parseFloat(el.dataset.raw)||0;el.value=raw===0?'0':fmtNum(raw);}
+function numBlur(el,id,field){
+  const raw=parseNumInput(el.value);
+  el.dataset.raw=raw;
+  if(field==='qty')upd(id,'qty',raw);else upd(id,'price',raw);
+  el.value=raw===0?'0':fmtNum(raw);
+  refreshLine(id);recalc();
+}
 
 function setProduct(id,v){
   upd(id,'product',v);
