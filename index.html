@@ -46,6 +46,16 @@ body {
   align-items: baseline;
   gap: 12px;
   margin-bottom: 10px;
+  width: 100%;
+}
+/* Fecha a la derecha, misma línea que el título (sin etiqueta extra arriba) */
+.header-date-wrap {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.header-date-wrap input[type="date"] {
+  width: auto;
+  min-width: 140px;
 }
 .page-title {
   font-family: 'DM Serif Display', serif;
@@ -75,6 +85,11 @@ body {
   background: linear-gradient(to right, var(--ink) 0%, transparent 55%);
   opacity: 0.08;
 }
+/* PDF: fecha en una sola línea junto al título; oculto en pantalla */
+.print-header-date { display: none; }
+
+/* Tarjeta Información oculta en pantalla; el HTML queda por compatibilidad con el JS (De/Para/RUT). */
+#info-card { display: none !important; }
 
 /* ── CARD ── */
 .card {
@@ -159,11 +174,12 @@ input::placeholder { color: #c0c0ba; }
   }
 }
 
-/* ── MÓVIL: información (De / Para / Fecha) ── */
+/* ── MÓVIL ── */
 @media (max-width: 640px) {
   body { padding: 28px 14px 72px; }
   .page-header { margin-bottom: 22px; }
   .header-top { flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+  .header-date-wrap { margin-left: auto; align-self: center; }
   .page-title { font-size: 34px; letter-spacing: -0.5px; }
   .page-badge { align-self: center; }
   .card-header { padding: 12px 14px; }
@@ -534,8 +550,30 @@ textarea::placeholder { color: #c0c0ba; }
   .page-header { margin-bottom:12px; }
   .header-rule { display:none; }
   .page-title { font-size:26px!important; }
-  .fields-row { gap:8px!important; grid-template-columns: 1fr 1.4fr 120px!important; }
-  .fields-row-2 { gap:8px!important; }
+  #info-card { display:none!important; }
+  .header-date-wrap { display:none!important; }
+  .header-top {
+    width:100%;
+    display:flex!important;
+    justify-content:space-between;
+    align-items:baseline;
+    flex-wrap:nowrap!important;
+    gap:16px;
+  }
+  .print-header-date {
+    display:block!important;
+    margin:0!important;
+    padding:0!important;
+    max-width:55%;
+    font-size:12px!important;
+    font-weight:500;
+    color:#555!important;
+    line-height:1!important;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-family:'DM Sans',system-ui,sans-serif!important;
+  }
   input[type="text"], input[type="date"] { border:none!important; border-bottom:1px solid #ccc!important; border-radius:0!important; padding:1px 0!important; background:transparent!important; color:#000!important; height:auto!important; white-space:normal!important; overflow:visible!important; word-break:break-word!important; }
   thead th { color:#555!important; border-bottom:2px solid #000!important; padding-bottom:5px!important; }
   tbody tr { border-bottom:1px solid #e8e8e8!important; }
@@ -560,12 +598,6 @@ textarea::placeholder { color: #c0c0ba; }
   .print-notes-area { display:flex!important; flex:1!important; flex-direction:column!important; }
   .print-notes-label { font-size:10px!important; font-weight:600!important; letter-spacing:0.08em!important; text-transform:uppercase!important; color:#888!important; margin-bottom:5px!important; }
   .print-notes-text { font-size:11px!important; color:#444!important; line-height:1.5!important; white-space:pre-wrap!important; }
-  /* RUT: ocultar campo separado, mostrar junto al nombre del cliente */
-  .factura-fields { display:none!important; }
-  #wrap-para { display:block!important; overflow:visible!important; }
-  #wrap-para #buyer { display:block!important; width:100%!important; white-space:normal!important; overflow:visible!important; text-overflow:clip!important; }
-  #buyer-rut-print { display:none; font-size:12px; color:#555; margin-top:1px; }
-  #buyer-rut-print.factura-active { display:block!important; }
   .rut-hint,.rut-error { display:none!important; }
   .app { max-width:100%!important; }
   .ac-list { display:none!important; }
@@ -610,12 +642,16 @@ textarea::placeholder { color: #c0c0ba; }
     <div class="header-top">
       <h1 class="page-title">Apunte</h1>
       <span class="page-badge">Lista &amp; Totales</span>
+      <div class="header-date-wrap">
+        <input type="date" id="date" aria-label="Fecha">
+      </div>
+      <time class="print-header-date" id="print-header-date" datetime="" aria-hidden="true"></time>
     </div>
     <div class="header-rule"></div>
   </div>
 
-  <!-- INFORMACIÓN -->
-  <div class="card">
+  <!-- Información: oculta en pantalla (#info-card); campos siguen en el DOM para el JS. -->
+  <div class="card" id="info-card">
     <div class="card-header">
       <span class="card-title">Información</span>
       <!-- Toggle Factura -->
@@ -641,10 +677,6 @@ textarea::placeholder { color: #c0c0ba; }
             <input type="text" id="buyer" placeholder="Nombre del cliente" oninput="acShowPara('para',this.value)" onfocus="acShowPara('para',this.value)" onblur="acHidePara('para')" autocomplete="off"><span id="buyer-rut-print" class="buyer-rut-print"></span>
             <div class="ac-list" id="ac-para" style="position:fixed;display:none;min-width:200px;z-index:9999"></div>
           </div>
-        </div>
-        <div class="field">
-          <label>Fecha</label>
-          <input type="date" id="date">
         </div>
       </div>
       <!-- Campos extra de factura -->
@@ -844,6 +876,20 @@ document.getElementById('date').valueAsDate=new Date();
 addRow();addRow();addRow();
 syncNotesCard();
 
+function updatePrintHeaderDate(){
+  const inp=document.getElementById('date');
+  const out=document.getElementById('print-header-date');
+  if(!inp||!out)return;
+  const v=inp.value;
+  if(!v){ out.textContent=''; out.removeAttribute('datetime'); return; }
+  out.setAttribute('datetime',v);
+  const p=v.split('-');
+  if(p.length!==3){ out.textContent=v; return; }
+  const d=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));
+  out.textContent=d.toLocaleDateString('es-CL',{day:'numeric',month:'long',year:'numeric'});
+}
+window.addEventListener('beforeprint',updatePrintHeaderDate);
+
 function syncNotesCard(){
   const v = document.getElementById('notes').value.trim();
   const nc = document.getElementById('notes-card');
@@ -936,7 +982,7 @@ function toggleFactura(){
   document.getElementById('sw-factura').classList.toggle('on',facturaMode);
   document.getElementById('sw-factura-label').classList.toggle('on',facturaMode);
   document.getElementById('factura-fields').classList.toggle('show',facturaMode);
-  document.querySelector('.card-title').textContent = facturaMode ? 'Factura' : 'Información';
+  document.querySelector('#info-card .card-title').textContent = facturaMode ? 'Factura' : 'Información';
   updateBuyerRutPrint();
 
   // Al activar: busca el RUT guardado del "Para" actual y lo rellena
