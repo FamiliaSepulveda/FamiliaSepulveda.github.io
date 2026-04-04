@@ -881,11 +881,18 @@ function parseNumInput(str){
   return Number.isFinite(n)?n:0;
 }
 
+function upperLocale(s){
+  return String(s||'').toLocaleUpperCase('es-CL');
+}
+
 // ── STATE ──
 let productMemory=[];
 let deMemory=[];   // memoria para campo "De"
 let paraMemory=[]; // memoria para campo "Para" — cada entry: {name, rut}
-try{productMemory=JSON.parse(localStorage.getItem('apunte_v1')||'[]');}catch(e){}
+try{
+  const raw=JSON.parse(localStorage.getItem('apunte_v1')||'[]');
+  productMemory=Array.isArray(raw)?[...new Set(raw.map(p=>upperLocale(p)).filter(Boolean))]:[];
+}catch(e){productMemory=[];}
 try{deMemory=JSON.parse(localStorage.getItem('apunte_de')||'[]');}catch(e){}
 try{paraMemory=JSON.parse(localStorage.getItem('apunte_para')||'[]');}catch(e){}
 let rows=[],rowId=0;
@@ -912,15 +919,23 @@ function updatePrintHeaderDate(){
 window.addEventListener('beforeprint',updatePrintHeaderDate);
 
 function syncNotesCard(){
-  const v = document.getElementById('notes').value.trim();
-  const nc = document.getElementById('notes-card');
-  if(nc) nc.dataset.empty = v===''?'1':'0';
-  // Print-notes: update content but NEVER show on screen (CSS handles print display)
-  const pt = document.getElementById('print-notes-text');
-  const pa = document.getElementById('print-notes-area');
-  if(pt) pt.textContent = v;
-  // Mark empty so print CSS can hide it
-  if(pa) pa.dataset.empty = v===''?'1':'0';
+  const ta=document.getElementById('notes');
+  if(ta){
+    const raw=ta.value;
+    const u=upperLocale(raw);
+    if(raw!==u){
+      const a=ta.selectionStart,b=ta.selectionEnd;
+      ta.value=u;
+      try{if(typeof a==='number'&&typeof b==='number')ta.setSelectionRange(a,b);}catch(e){}
+    }
+  }
+  const v=(document.getElementById('notes')||{}).value.trim();
+  const nc=document.getElementById('notes-card');
+  if(nc) nc.dataset.empty=v===''?'1':'0';
+  const pt=document.getElementById('print-notes-text');
+  const pa=document.getElementById('print-notes-area');
+  if(pt) pt.textContent=v;
+  if(pa) pa.dataset.empty=v===''?'1':'0';
 }
 
 // ── MODAL LIMPIAR ──
@@ -1180,6 +1195,7 @@ function deleteRow(id){
 function renderRows(){
   const body=document.getElementById('rows-body');
   body.innerHTML='';
+  rows.forEach(r=>{r.product=upperLocale(r.product);});
   rows.forEach((row,i)=>{
     const tr=document.createElement('tr');
     if(!row.product.trim()) tr.classList.add('row-empty');
@@ -1189,7 +1205,7 @@ function renderRows(){
       <td class="col-product">
         <div class="ac-wrap" id="acw-${row.id}">
           <input class="td-input" type="text" value="${esc(row.product)}" placeholder="Nombre del producto"
-            oninput="setProduct(${row.id},this.value)"
+            oninput="setProduct(${row.id},this)"
             onkeydown="acKey(event,${row.id})"
             onfocus="acShow(${row.id})"
             onblur="acHide(${row.id})">
@@ -1232,14 +1248,20 @@ function numBlur(el,id,field){
   refreshLine(id);recalc();
 }
 
-function setProduct(id,v){
-  upd(id,'product',v);
-  acShow(id,v);
-  // Update row-empty class live
+function setProduct(id,el){
+  const v=el.value;
+  const u=upperLocale(v);
+  if(v!==u){
+    const a=el.selectionStart,b=el.selectionEnd;
+    el.value=u;
+    try{if(typeof a==='number'&&typeof b==='number')el.setSelectionRange(a,b);}catch(e){}
+  }
+  upd(id,'product',u);
+  acShow(id,u);
   const body=document.getElementById('rows-body');
   const idx=rows.findIndex(r=>r.id===id);
   if(idx>=0&&body.children[idx]){
-    body.children[idx].classList.toggle('row-empty',!v.trim());
+    body.children[idx].classList.toggle('row-empty',!u.trim());
   }
 }
 function upd(id,k,v){const r=rows.find(r=>r.id===id);if(r)r[k]=v;}
@@ -1286,7 +1308,7 @@ function memSaveManual(name,id){
   memSave(name);
   const list=document.getElementById('ac-'+id);
   if(list)list.style.display='none';
-  toast('"'+name+'" guardado ✓');
+  toast('"'+upperLocale(name)+'" guardado ✓');
 }
 function memDelete(name,activeId){
   productMemory=productMemory.filter(p=>p!==name);
@@ -1298,7 +1320,7 @@ function memDelete(name,activeId){
 function acHide(id){
   setTimeout(()=>{const el=document.getElementById('ac-'+id);if(el)el.style.display='none';},160);
 }
-function acPick(id,name){upd(id,'product',name);renderRows();}
+function acPick(id,name){upd(id,'product',upperLocale(name));renderRows();}
 function acKey(e,id){
   const list=document.getElementById('ac-'+id);
   if(!list||list.style.display==='none')return;
@@ -1311,8 +1333,9 @@ function acKey(e,id){
   items.forEach((el,i)=>el.classList.toggle('sel',i===cur));
 }
 function memSave(name){
-  if(!productMemory.includes(name)){
-    productMemory.unshift(name);
+  const u=upperLocale(name);
+  if(!productMemory.includes(u)){
+    productMemory.unshift(u);
     if(productMemory.length>80)productMemory.pop();
     try{localStorage.setItem('apunte_v1',JSON.stringify(productMemory));}catch(e){}
   }
