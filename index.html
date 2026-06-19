@@ -542,7 +542,7 @@ textarea::placeholder { color: #c0c0ba; }
 /* ══════════ PRINT ══════════ */
 @page { margin: 0; size: A4; }
 @media print {
-  body { background:#fff!important; color:#000!important; padding:14mm 12mm!important; font-size:11.5px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body { background:#fff!important; color:#000!important; padding:14mm 12mm!important; font-size:11.5px; min-height:0!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .page-badge,.toggles-row,.btn-add-row,.btn-del,.actions,.toast,.factura-toggle-row { display:none!important; }
   .card { background:#fff!important; border:none!important; box-shadow:none!important; margin-bottom:4px!important; }
   .card-header { border-bottom:1px solid #ddd!important; padding:6px 0!important; }
@@ -899,10 +899,52 @@ let rows=[],rowId=0;
 let features={iva:false,discount:false,saldo:false,comision:false,sinprecio:false};
 let facturaMode=false;
 
+// ── AUTOGUARDADO DE BORRADOR ──
+let saveTimer=null;
+function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveDraft,400);}
+function _v(id){const el=document.getElementById(id);return el?el.value:'';}
+function _set(id,v){const el=document.getElementById(id);if(el&&v!=null)el.value=v;}
+function saveDraft(){
+  try{
+    const d={
+      rows:rows.map(r=>({product:r.product,qty:r.qty,price:r.price})),
+      seller:_v('seller'),buyer:_v('buyer'),rut:_v('rut-buyer'),
+      notes:_v('notes'),date:_v('date'),
+      features:features,facturaMode:facturaMode,
+      discountPct:_v('discount-val'),ivaPct:_v('iva-val'),comisionPct:_v('comision-val'),
+      saldo:document.getElementById('saldo-val')?.dataset.raw||'0'
+    };
+    localStorage.setItem('apunte_draft',JSON.stringify(d));
+  }catch(e){}
+}
+function loadDraft(){
+  let d;
+  try{d=JSON.parse(localStorage.getItem('apunte_draft')||'null');}catch(e){return false;}
+  if(!d||!Array.isArray(d.rows)||!d.rows.length)return false;
+  rows=d.rows.map(r=>({id:++rowId,product:upperLocale(r.product||''),qty:Number(r.qty)||0,price:Number(r.price)||0}));
+  // Valores de campos y porcentajes (antes de activar features para que recalc lea bien)
+  _set('seller',d.seller);_set('buyer',d.buyer);_set('notes',d.notes);
+  if(d.date)_set('date',d.date);
+  _set('discount-val',d.discountPct);_set('iva-val',d.ivaPct);_set('comision-val',d.comisionPct);
+  const sv=document.getElementById('saldo-val');
+  if(sv&&d.saldo!=null){sv.dataset.raw=d.saldo;sv.value=fmtNum(parseFloat(d.saldo)||0);}
+  // Activar toggles guardados
+  if(d.features)['discount','iva','comision','saldo','sinprecio'].forEach(f=>{if(d.features[f])toggleFeature(f);});
+  // Factura primero (puede autocompletar RUT), luego sobrescribimos con el guardado
+  if(d.facturaMode)toggleFactura();
+  _set('rut-buyer',d.rut);
+  renderRows();
+  validateRut();updateBuyerRutPrint();syncNotesCard();
+  return true;
+}
+
 // ── INIT ──
 document.getElementById('date').valueAsDate=new Date();
-addRow();addRow();addRow();
+if(!loadDraft()){addRow();addRow();addRow();}
 syncNotesCard();
+// Autoguardado: cualquier input/cambio en el documento agenda un guardado
+document.addEventListener('input',scheduleSave);
+document.addEventListener('change',scheduleSave);
 
 function updatePrintHeaderDate(){
   const inp=document.getElementById('date');
@@ -1032,6 +1074,7 @@ function toggleFactura(){
       }
     }
   }
+  scheduleSave();
 }
 
 // ── DE / PARA AUTOCOMPLETE ──
@@ -1174,7 +1217,7 @@ function toggleFeature(f){
     document.getElementById('row-'+f).style.display=features[f]?'':'none';
     syncRellenarRows();
   }
-  recalc();
+  recalc();scheduleSave();
 }
 
 function syncRellenarRows(){
@@ -1186,10 +1229,10 @@ function syncRellenarRows(){
 }
 
 // ── ROWS ──
-function addRow(){rows.push({id:++rowId,product:'',qty:1,price:0});renderRows();}
+function addRow(){rows.push({id:++rowId,product:'',qty:1,price:0});renderRows();scheduleSave();return rowId;}
 function deleteRow(id){
   if(rows.length<=1)return toast('Debe quedar al menos una fila');
-  rows=rows.filter(r=>r.id!==id);renderRows();recalc();
+  rows=rows.filter(r=>r.id!==id);renderRows();recalc();scheduleSave();
 }
 
 function renderRows(){
@@ -1199,14 +1242,14 @@ function renderRows(){
   rows.forEach((row,i)=>{
     const tr=document.createElement('tr');
     if(!row.product.trim()) tr.classList.add('row-empty');
-    const line=row.qty*row.price;
+    const line=Math.round(row.qty*row.price);
     tr.innerHTML=`
       <td class="col-num"><div class="num-cell">${i+1}</div></td>
       <td class="col-product">
         <div class="ac-wrap" id="acw-${row.id}">
           <input class="td-input" type="text" value="${esc(row.product)}" placeholder="Nombre del producto"
             oninput="setProduct(${row.id},this)"
-            onkeydown="acKey(event,${row.id})"
+            onkeydown="rowKey(event,${row.id})"
             onfocus="acShow(${row.id})"
             onblur="acHide(${row.id})">
           <div class="ac-list" id="ac-${row.id}"></div>
@@ -1265,7 +1308,7 @@ function setProduct(id,el){
   }
 }
 function upd(id,k,v){const r=rows.find(r=>r.id===id);if(r)r[k]=v;}
-function refreshLine(id){const r=rows.find(r=>r.id===id);const el=document.getElementById('line-'+id);if(r&&el)el.textContent=fmt(r.qty*r.price);}
+function refreshLine(id){const r=rows.find(r=>r.id===id);const el=document.getElementById('line-'+id);if(r&&el)el.textContent=fmt(Math.round(r.qty*r.price));}
 
 // ── AUTOCOMPLETE ──
 function highlight(text,query){
@@ -1281,20 +1324,12 @@ function acShow(id,q){
   if(q===undefined)q=rows.find(r=>r.id===id)?.product||'';
   const ql=q.toLowerCase().trim();
   const hits=ql?productMemory.filter(p=>p.toLowerCase().includes(ql)).slice(0,8):productMemory.slice(0,8);
-  const exactMatch=productMemory.some(p=>p.toLowerCase()===ql);
-  const showSave=ql.length>0&&!exactMatch;
-  if(!hits.length&&!showSave){list.style.display='none';return;}
+  if(!hits.length){list.style.display='none';return;}
   list.innerHTML=hits.map(h=>`
     <div class="ac-item" onmousedown="acPick(${id},'${esc(h)}')">
       <span class="ac-item-name">${highlight(h,ql)}</span>
       <button class="ac-del" onmousedown="event.stopPropagation();memDelete('${esc(h)}',${id})">Eliminar producto guardado</button>
     </div>`).join('');
-  if(showSave){
-    list.innerHTML+=`<button class="ac-save" onmousedown="event.stopPropagation();memSaveManual('${esc(q)}',${id})">
-      <span class="ac-save-icon">+</span>
-      Guardar <strong style="color:var(--ink)">"${esc(q)}"</strong>
-    </button>`;
-  }
   const wrap=document.getElementById('acw-'+id);
   if(wrap){
     const rect=wrap.getBoundingClientRect();
@@ -1303,12 +1338,6 @@ function acShow(id,q){
     list.style.width=rect.width+'px';
   }
   list.style.display='block';
-}
-function memSaveManual(name,id){
-  memSave(name);
-  const list=document.getElementById('ac-'+id);
-  if(list)list.style.display='none';
-  toast('"'+upperLocale(name)+'" guardado ✓');
 }
 function memDelete(name,activeId){
   productMemory=productMemory.filter(p=>p!==name);
@@ -1320,7 +1349,27 @@ function memDelete(name,activeId){
 function acHide(id){
   setTimeout(()=>{const el=document.getElementById('ac-'+id);if(el)el.style.display='none';},160);
 }
-function acPick(id,name){upd(id,'product',upperLocale(name));renderRows();}
+function acPick(id,name){upd(id,'product',upperLocale(name));renderRows();scheduleSave();}
+// Enter en producto: si es la última fila crea una nueva; salta a la siguiente fila
+function rowKey(e,id){
+  const list=document.getElementById('ac-'+id);
+  const acOpen=list&&list.style.display!=='none';
+  if(acOpen){
+    acKey(e,id);
+    if(e.defaultPrevented)return; // ya seleccionó o navegó
+  }
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(list)list.style.display='none';
+    const idx=rows.findIndex(r=>r.id===id);
+    const nextId=(idx===rows.length-1)?addRow():rows[idx+1].id;
+    focusProduct(nextId);
+  }
+}
+function focusProduct(id){
+  if(id==null)return;
+  setTimeout(()=>{const el=document.querySelector('#acw-'+id+' input');if(el)el.focus();},0);
+}
 function acKey(e,id){
   const list=document.getElementById('ac-'+id);
   if(!list||list.style.display==='none')return;
@@ -1332,28 +1381,19 @@ function acKey(e,id){
   else if(e.key==='Escape'){list.style.display='none';return;}
   items.forEach((el,i)=>el.classList.toggle('sel',i===cur));
 }
-function memSave(name){
-  const u=upperLocale(name);
-  if(!productMemory.includes(u)){
-    productMemory.unshift(u);
-    if(productMemory.length>80)productMemory.pop();
-    try{localStorage.setItem('apunte_v1',JSON.stringify(productMemory));}catch(e){}
-  }
-}
-
 // ── RECALC ──
 function recalc(){
-  const sub=rows.reduce((s,r)=>s+r.qty*r.price,0);
-  const saldoAmt=features.saldo?(parseFloat(document.getElementById('saldo-val')?.dataset.raw)||0):0;
+  const sub=rows.reduce((s,r)=>s+Math.round(r.qty*r.price),0);
+  const saldoAmt=features.saldo?Math.round(parseFloat(document.getElementById('saldo-val')?.dataset.raw)||0):0;
   const subTotal=sub+saldoAmt;
   const discPct=features.discount?(parseFloat(document.getElementById('discount-val')?.value)||0):0;
-  const discAmt=subTotal*discPct/100;
+  const discAmt=Math.round(subTotal*discPct/100);
   const afterDisc=subTotal-discAmt;
   const ivaPct=features.iva?(parseFloat(document.getElementById('iva-val')?.value)||0):0;
-  const ivaAmt=afterDisc*ivaPct/100;
+  const ivaAmt=Math.round(afterDisc*ivaPct/100);
   const afterIva=afterDisc+ivaAmt;
   const comPct=features.comision?(parseFloat(document.getElementById('comision-val')?.value)||0):0;
-  const comAmt=afterIva*comPct/100;
+  const comAmt=Math.round(afterIva*comPct/100);
   const grand=afterIva+comAmt;
   document.getElementById('t-subtotal').textContent=fmt(subTotal);
   if(features.saldo){const el=document.getElementById('t-saldo-line');if(el)el.textContent=fmt(saldoAmt);}
@@ -1378,6 +1418,7 @@ function clearAll(){
   if(rh)rh.classList.remove('show');
   syncNotesCard();
   rows=[];rowId=0;addRow();addRow();addRow();
+  try{localStorage.removeItem('apunte_draft');}catch(e){}
   toast('Apunte limpiado');
 }
 
