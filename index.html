@@ -1583,7 +1583,7 @@ async function shareApunte(){
   const name=pdfFileName();
   const file=new File([blob],name,{type:'application/pdf'});
   if(navigator.canShare&&navigator.canShare({files:[file]})){
-    try{await navigator.share({files:[file],title:'Apunte'});}
+    try{await navigator.share({files:[file]});}
     catch(e){if(e.name!=='AbortError'){downloadBlob(blob,name);toast('PDF descargado');}}
     return;
   }
