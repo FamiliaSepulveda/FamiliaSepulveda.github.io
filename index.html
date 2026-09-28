@@ -6,6 +6,8 @@
 <title>Apunte</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%23111110'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='20' font-family='Georgia,serif' font-style='italic' font-weight='400' fill='%23f5f5f2' letter-spacing='-1'>Ap</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js" integrity="sha512-plOdviVmws4Y3JAvbnpfKb2hVxKM1lCwsi3vmElYRj+tiDLffZ4FVUj5a8vyKJ9pIgl8JCAHEJ4D1iUKBecswg==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js" integrity="sha512-QLh0AACvI+3C+bmn3QdH6blN0NWBxwGvBDgV67TvKV5Q2knO9+/+lguVL23JQ9DR7CnfuOSYUBURlXjmJeK11Q==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -511,7 +513,7 @@ textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px 
 textarea::placeholder { color: #c0c0ba; }
 
 /* ── ACTIONS ── */
-.actions { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding-top: 4px; }
 .actions-spacer { flex: 1; }
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
@@ -827,6 +829,10 @@ textarea::placeholder { color: #c0c0ba; }
   <div class="actions">
     <button class="btn btn-ghost" onclick="showClearModal()">Limpiar</button>
     <div class="actions-spacer"></div>
+    <button class="btn" onclick="shareApunte()">
+      <svg viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+      Compartir PDF
+    </button>
     <button class="btn btn-primary" onclick="printApunte()">
       <svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       Imprimir / Guardar PDF
@@ -945,6 +951,15 @@ syncNotesCard();
 // Autoguardado: cualquier input/cambio en el documento agenda un guardado
 document.addEventListener('input',scheduleSave);
 document.addEventListener('change',scheduleSave);
+// Swipe-to-delete en filas (delegación: sobrevive re-render)
+(function(){
+  const rb=document.getElementById('rows-body');
+  if(!rb)return;
+  rb.addEventListener('touchstart',rowsTouchStart,{passive:true});
+  rb.addEventListener('touchmove',rowsTouchMove,{passive:false});
+  rb.addEventListener('touchend',rowsTouchEnd);
+  rb.addEventListener('touchcancel',rowsTouchEnd);
+})();
 
 function updatePrintHeaderDate(){
   const inp=document.getElementById('date');
@@ -1241,6 +1256,7 @@ function renderRows(){
   rows.forEach(r=>{r.product=upperLocale(r.product);});
   rows.forEach((row,i)=>{
     const tr=document.createElement('tr');
+    tr.dataset.rowid=row.id;
     if(!row.product.trim()) tr.classList.add('row-empty');
     const line=Math.round(row.qty*row.price);
     tr.innerHTML=`
@@ -1370,6 +1386,45 @@ function focusProduct(id){
   if(id==null)return;
   setTimeout(()=>{const el=document.querySelector('#acw-'+id+' input');if(el)el.focus();},0);
 }
+
+// ── SWIPE PARA BORRAR FILA (móvil) ──
+let swTr=null,swId=null,swX=0,swY=0,swDx=0,swActive=false;
+function rowsTouchStart(e){
+  const t=e.target.closest('tr');
+  if(!t||!t.dataset.rowid||e.target.closest('.ac-list')){swTr=null;return;}
+  const touch=e.touches[0];
+  swTr=t;swId=+t.dataset.rowid;swX=touch.clientX;swY=touch.clientY;swDx=0;swActive=false;
+}
+function rowsTouchMove(e){
+  if(!swTr)return;
+  const touch=e.touches[0];
+  const dx=touch.clientX-swX, dy=touch.clientY-swY;
+  if(!swActive){
+    if(Math.abs(dx)>10&&Math.abs(dx)>Math.abs(dy)*1.5){swActive=true;}
+    else if(Math.abs(dy)>10){swTr=null;return;}
+  }
+  if(swActive){
+    e.preventDefault();
+    swDx=Math.max(-100,Math.min(0,dx));
+    swTr.style.transition='none';
+    swTr.style.transform='translateX('+swDx+'px)';
+    swTr.style.background = swDx<-60 ? 'rgba(220,38,38,0.12)' : '';
+  }
+}
+function rowsTouchEnd(){
+  if(!swTr)return;
+  const tr=swTr,id=swId,dx=swDx,act=swActive;swTr=null;
+  tr.style.transition='transform .18s ease, background .18s ease';
+  if(act&&dx<-60&&rows.length>1){
+    tr.style.transform='translateX(-100%)';
+    tr.style.background='rgba(220,38,38,0.12)';
+    setTimeout(()=>deleteRow(id),150);
+  }else{
+    tr.style.transform='';
+    tr.style.background='';
+    if(act&&dx<-60)toast('Debe quedar al menos una fila');
+  }
+}
 function acKey(e,id){
   const list=document.getElementById('ac-'+id);
   if(!list||list.style.display==='none')return;
@@ -1382,7 +1437,7 @@ function acKey(e,id){
   items.forEach((el,i)=>el.classList.toggle('sel',i===cur));
 }
 // ── RECALC ──
-function recalc(){
+function calcTotals(){
   const sub=rows.reduce((s,r)=>s+Math.round(r.qty*r.price),0);
   const saldoAmt=features.saldo?Math.round(parseFloat(document.getElementById('saldo-val')?.dataset.raw)||0):0;
   const subTotal=sub+saldoAmt;
@@ -1395,6 +1450,11 @@ function recalc(){
   const comPct=features.comision?(parseFloat(document.getElementById('comision-val')?.value)||0):0;
   const comAmt=Math.round(afterIva*comPct/100);
   const grand=afterIva+comAmt;
+  return {saldoAmt,subTotal,discPct,discAmt,ivaPct,ivaAmt,comPct,comAmt,grand};
+}
+
+function recalc(){
+  const {saldoAmt,subTotal,discAmt,ivaAmt,comAmt,grand}=calcTotals();
   document.getElementById('t-subtotal').textContent=fmt(subTotal);
   if(features.saldo){const el=document.getElementById('t-saldo-line');if(el)el.textContent=fmt(saldoAmt);}
   if(features.discount)document.getElementById('t-discount').textContent='-'+fmt(discAmt);
@@ -1425,6 +1485,110 @@ function clearAll(){
 // ── PRINT ──
 function printApunte(){
   window.print();
+}
+
+// ── PDF / COMPARTIR ──
+function buildPdf(){
+  const doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=12;
+  const blank=features.sinprecio;
+  const t=calcTotals();
+
+  updatePrintHeaderDate();
+  doc.setFont('times','italic');doc.setFontSize(26);doc.setTextColor(17);
+  doc.text('Apunte',M,22);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(85);
+  doc.text(document.getElementById('print-header-date').textContent,W-M,22,{align:'right'});
+
+  const body=rows.filter(r=>r.product.trim()).map((r,i)=>[
+    i+1,r.product,fmtNum(r.qty),blank?'':fmt(r.price),blank?'':fmt(Math.round(r.qty*r.price))
+  ]);
+  const saldoIdx=features.saldo?body.push(['S','Saldo anterior','',blank?'':fmt(t.saldoAmt),blank?'':fmt(t.saldoAmt)])-1:-1;
+
+  doc.autoTable({
+    startY:30,margin:{left:M,right:M},theme:'plain',
+    head:[['','Producto','Cant.','Precio','Total']],body,
+    styles:{font:'helvetica',fontSize:9.5,textColor:17,cellPadding:{top:2.4,bottom:2.4,left:2,right:2},lineColor:232,lineWidth:{bottom:0.2}},
+    headStyles:{fontSize:8.5,fontStyle:'bold',textColor:85,lineColor:0,lineWidth:{bottom:0.5}},
+    columnStyles:{0:{cellWidth:9,halign:'center',textColor:170},2:{cellWidth:18},3:{cellWidth:30},4:{cellWidth:30}},
+    didParseCell(d){
+      if(d.column.index>=2)d.cell.styles.halign='right';
+      if(d.section==='body'&&d.row.index===saldoIdx){
+        d.cell.styles.fillColor=[245,245,243];
+        if(d.column.index===1){d.cell.styles.fontStyle='italic';d.cell.styles.textColor=110;}
+      }
+    },
+    didDrawCell(d){
+      if(blank&&d.section==='body'&&d.column.index>=3){
+        doc.setDrawColor(190);doc.setLineWidth(0.2);
+        doc.line(d.cell.x+3,d.cell.y+d.cell.height-1.6,d.cell.x+d.cell.width-2,d.cell.y+d.cell.height-1.6);
+      }
+    }
+  });
+
+  const boxW=75,gap=6;
+  const lines=[['Subtotal',fmt(t.subTotal)]];
+  if(features.discount)lines.push([blank?'Descuento':`Descuento ${fmtNum(t.discPct)}%`,'-'+fmt(t.discAmt)]);
+  if(features.iva)lines.push([blank?'IVA':`IVA ${fmtNum(t.ivaPct)}%`,fmt(t.ivaAmt)]);
+  if(features.comision)lines.push([blank?'Comisión':`Comisión ${fmtNum(t.comPct)}%`,fmt(t.comAmt)]);
+  lines.push(['Total a pagar',fmt(t.grand)]);
+  if(blank)lines.forEach(l=>{l[1]='';});
+
+  const notes=(document.getElementById('notes')||{}).value.trim();
+  const notesW=W-2*M-boxW-gap;
+  doc.setFont('helvetica','normal');doc.setFontSize(9);
+  const noteLines=notes?doc.splitTextToSize(notes,notesW):[];
+  const need=Math.max(lines.length*8,noteLines.length*4.2+6)+4;
+  let y=doc.lastAutoTable.finalY+8;
+  if(y+need>H-14){doc.addPage();y=18;}
+
+  if(noteLines.length){
+    doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(136);
+    doc.text('NOTAS',M,y+3);
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(68);
+    doc.text(noteLines,M,y+8,{lineHeightFactor:1.35});
+  }
+
+  doc.autoTable({
+    startY:y,margin:{left:W-M-boxW,right:M},tableWidth:boxW,theme:'plain',
+    body:lines,
+    styles:{font:'helvetica',fontSize:9.5,textColor:85,cellPadding:{top:2.4,bottom:2.4,left:3.5,right:3.5},lineColor:204,lineWidth:0.2},
+    columnStyles:{1:{halign:'right',textColor:0,minCellWidth:blank?38:0}},
+    didParseCell(d){
+      if(d.row.index===lines.length-1){
+        d.cell.styles.fontStyle='bold';
+        if(d.column.index===0||!blank){d.cell.styles.fillColor=17;d.cell.styles.textColor=255;}
+      }
+    }
+  });
+  return doc;
+}
+
+function pdfFileName(){
+  const slug=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  return ['Apunte',slug(_v('buyer')),_v('date')].filter(Boolean).join('-')+'.pdf';
+}
+
+function downloadBlob(blob,name){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+
+async function shareApunte(){
+  if(!window.jspdf||!window.jspdf.jsPDF.API.autoTable)return toast('No se pudo cargar el generador de PDF');
+  let blob;
+  try{blob=buildPdf().output('blob');}catch(e){console.error(e);return toast('Error al generar el PDF');}
+  const name=pdfFileName();
+  const file=new File([blob],name,{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:'Apunte'});}
+    catch(e){if(e.name!=='AbortError'){downloadBlob(blob,name);toast('PDF descargado');}}
+    return;
+  }
+  downloadBlob(blob,name);
+  toast('PDF descargado');
 }
 
 function toast(msg){
